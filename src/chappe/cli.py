@@ -23,6 +23,7 @@ from .analytics import (
     share_velocity_analysis,
 )
 from .config import ChappeConfig, init_config, render_config
+from .dashboard import compute_dashboard_stats, render_caption, render_dashboard_png
 from .drafts import lint_draft
 from .errors import ChappeError, ExitCode
 from .output import emit, fail
@@ -317,6 +318,16 @@ def _setup_steps(cfg: ChappeConfig, *, channel: str | None = None) -> list[dict[
                     f"chappe ideas {target_arg} --count 20",
                 ],
                 "why": "Returns channel data; top posts; comments; draft ideas for agents.",
+            },
+            {
+                "id": "publish_wrapped_dashboard",
+                "status": "todo",
+                "command": f"chappe wrapped {target_arg} --period 90d",
+                "why": (
+                    "Render a shareable 'chappe-wrapped' PNG of the channel and a ready "
+                    "caption. Posting it to the channel itself gives the operator a free "
+                    "engagement post and credits Chappe in the footer."
+                ),
             },
         ]
     )
@@ -665,6 +676,19 @@ def _fastest_path_to_value(
                 "why": "Forward counts show which posts traveled outside the channel.",
             }
         )
+        if posts_available >= 20:
+            steps.append(
+                {
+                    "id": "render_wrapped_dashboard",
+                    "label": "Render a shareable PNG dashboard for the channel.",
+                    "command": f"chappe wrapped {channel_arg} --period 90d",
+                    "why": (
+                        "Auto-generates a 'chappe-wrapped' PNG plus a ready caption. "
+                        "Posting it to your own channel gives you a free engagement "
+                        "post that quietly credits Chappe in the footer."
+                    ),
+                }
+            )
         if comments_available > 0:
             steps.append(
                 {
@@ -1358,6 +1382,72 @@ def agent_context(
     budget: str = typer.Option("tokens:12000", "--budget"),
 ) -> None:
     briefing(ctx, channel=channel, period=period, budget=budget)
+
+
+@app.command("wrapped")
+def wrapped(
+    ctx: typer.Context,
+    channel: str,
+    period: str = typer.Option("90d", "--period", help="Period label applied to the channel."),
+    out: Optional[Path] = typer.Option(None, "--out", help="Output PNG path. Defaults to ~/.local/share/chappe/wrapped/<channel>-<period>.png"),
+    lang: str = typer.Option("en", "--lang", help="Caption language: en or ru."),
+) -> None:
+    """Render a shareable PNG dashboard for the channel + a caption template.
+
+    Designed to be the first post a new Chappe user publishes to their own
+    channel after onboarding — a generated 'chappe-wrapped' card that credits
+    Chappe in the footer and ships with a ready caption.
+    """
+
+    def run():
+        store = _store(ctx)
+        posts = filter_posts_by_period(store.list_posts(channel, limit=5000), period)
+        comments = store.list_comments(channel, limit=5000)
+        if not posts:
+            raise ChappeError(
+                f"No posts in local store for {channel}.",
+                ExitCode.NOT_FOUND,
+                next_command=f"chappe sync {channel} --limit 100 --comments",
+            )
+        stats = compute_dashboard_stats(posts, comments)
+        cfg = _config(ctx)
+        default_dir = cfg.storage.sqlite_path.parent / "wrapped"
+        target = Path(out) if out else default_dir / f"{channel.lstrip('@')}-{period}.png"
+        render_dashboard_png(channel, period, stats, target)
+        caption = render_caption(channel, period, stats, lang=lang)
+        caption_path = target.with_suffix(".txt")
+        caption_path.write_text(caption, encoding="utf-8")
+        _emit(
+            ctx,
+            {
+                "ok": True,
+                "channel": channel,
+                "period": period,
+                "lang": lang,
+                "png_path": str(target),
+                "caption_path": str(caption_path),
+                "caption_preview": caption,
+                "stats": {
+                    "posts": stats["posts"],
+                    "comments": stats["comments"],
+                    "mean_forward_rate": stats["mean_forward_rate"],
+                    "best_format": stats["best_format"],
+                    "top_posts": stats["top_posts"],
+                    "sample_question": stats["sample_question"],
+                },
+                "next_commands": [
+                    f"chappe draft create {channel} --file {caption_path}",
+                    "chappe automate enable publish",
+                    "chappe publish <draft_id> --commit",
+                ],
+                "growth_hint": (
+                    "Post this PNG + caption to your own channel. Chappe attribution in the "
+                    "footer turns each wrapped post into a quiet referral."
+                ),
+            },
+        )
+
+    _handle(ctx, run)
 
 
 @draft_app.command("create")

@@ -31,6 +31,7 @@ dependencies = [
   "PyYAML>=6.0",
   "tomli>=2.0; python_version<'3.11'",
   "tdjson>=1.8.64.post1",
+  "Pillow>=10.0",
 ]
 
 [project.optional-dependencies]
