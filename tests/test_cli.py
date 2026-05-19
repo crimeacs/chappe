@@ -206,7 +206,7 @@ def test_wrapped_creates_png_and_caption(tmp_path):
     caption_path = out_path.with_suffix(".txt")
     assert caption_path.exists()
     caption = caption_path.read_text(encoding="utf-8")
-    assert "chappe-wrapped" in caption
+    assert "Chappe-Wrapped" in caption
     assert "@nn_for_science" in caption
     assert "github.com/crimeacs/chappe" in caption
 
