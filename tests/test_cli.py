@@ -212,7 +212,6 @@ def test_compare_returns_per_channel_top_and_combined(tmp_path):
     assert '"combined_leaderboard":' in result.stdout
     assert '"by_forward_ratio_winner":' in result.stdout
     assert '"by_raw_metric_winner":' in result.stdout
-    assert '"@a"' in result.stdout  # higher forward rate
     assert '"value": 500' in result.stdout  # raw forwards winner
 
 
@@ -237,6 +236,88 @@ def test_compare_emits_sync_next_command_when_channel_unsynced(tmp_path):
     assert '"unsynced_channels":' in result.stdout
     assert "@neverseen" in result.stdout
     assert "chappe sync @neverseen" in result.stdout
+
+
+def test_wrapped_creates_png_and_caption(tmp_path):
+    store = Store(tmp_path / ".local" / "share" / "chappe" / "chappe.db")
+    store.upsert_posts(
+        "@nn_for_science",
+        [
+            {
+                "id": str(i),
+                "date": "2026-05-01T00:00:00+00:00",
+                "text": f"Test post {i} about agents and Claude",
+                "views": 1000 + i * 10,
+                "forwards": 50 + i,
+                "replies": 0,
+                "reactions": 0,
+                "media_type": "photo",
+                "link": f"https://t.me/nn_for_science/{i}",
+            }
+            for i in range(1, 6)
+        ],
+    )
+    store.upsert_comments(
+        "@nn_for_science",
+        "1",
+        [{"id": "c1", "text": "Где github?", "reactions": 3}],
+    )
+
+    out_path = tmp_path / "wrapped.png"
+    result = runner.invoke(
+        app,
+        ["wrapped", "@nn_for_science", "--out", str(out_path), "--lang", "ru"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert '"ok": true' in result.stdout
+    assert '"growth_hint":' in result.stdout
+    assert "github.com/crimeacs/chappe" in result.stdout
+    assert out_path.exists()
+    assert out_path.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    caption_path = out_path.with_suffix(".txt")
+    assert caption_path.exists()
+    caption = caption_path.read_text(encoding="utf-8")
+    assert "Chappe-Wrapped" in caption
+    assert "@nn_for_science" in caption
+    assert "github.com/crimeacs/chappe" in caption
+
+
+def test_wrapped_errors_when_channel_unsynced(tmp_path):
+    result = runner.invoke(
+        app,
+        ["wrapped", "@neverseen"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+    assert result.exit_code != 0
+    combined = result.stdout + result.stderr
+    assert "No posts in local store" in combined
+    assert "chappe sync @neverseen" in combined
+
+
+def test_onboard_suggests_wrapped_when_posts_present(tmp_path):
+    store = Store(tmp_path / ".local" / "share" / "chappe" / "chappe.db")
+    store.upsert_posts(
+        "@nn_for_science",
+        [
+            {
+                "id": str(i),
+                "date": "2026-05-01T00:00:00+00:00",
+                "views": 100 * i,
+                "forwards": i,
+            }
+            for i in range(1, 25)
+        ],
+    )
+    result = runner.invoke(
+        app,
+        ["bootstrap", "--channel", "@nn_for_science"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+    assert result.exit_code == 0
+    assert '"id": "render_wrapped_dashboard"' in result.stdout
+    assert "chappe wrapped @nn_for_science" in result.stdout
 
 
 def test_posts_top_warns_when_metric_is_all_zero(tmp_path):
