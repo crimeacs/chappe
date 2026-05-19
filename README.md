@@ -12,14 +12,14 @@
 Paste this into Codex, Claude Code, OpenCode, OpenClaw, or Hermes:
 
 ```text
-Install Chappe if needed with `curl -LsSf https://raw.githubusercontent.com/crimeacs/chappe/main/scripts/install.sh | CHAPPE_CHANNEL=@nn_for_science sh`, then run `chappe --pretty onboard --channel @nn_for_science`, follow `agent_guided_setup`, ask me only for required Telegram values, sync 100 recent posts with comments after auth is ready, and produce a channel briefing.
+Install Chappe if needed with `curl -LsSf https://raw.githubusercontent.com/crimeacs/chappe/main/scripts/install.sh | CHAPPE_CHANNEL=@your_channel sh`, then run `chappe --pretty onboard --channel @your_channel`, follow `agent_guided_setup`, ask me only for required Telegram values, sync 100 recent posts with comments after auth is ready, and produce a channel briefing. Replace @your_channel with my Telegram channel handle.
 ```
 
 Chappe returns `agent_guided_setup`, `setup_steps`, `agent_integrations`, and
 `intended_use` so the host can ask for credentials safely before it syncs data.
 
 Chappe gives agent hosts a private TDLib session; local SQLite analytics;
-policy-gated publish commands for channels such as `@nn_for_science`.
+policy-gated publish commands for Telegram channels.
 
 The CLI collects channel data, ranks posts, mines audience questions, prepares
 drafts, and publishes only through explicit local policy. It is named after
@@ -91,8 +91,10 @@ pipx install chappe
 Start from an agent host. Bootstrap gathers safe local context and returns the
 next useful commands:
 
+Replace `@your_channel` with the target channel handle.
+
 ```bash
-chappe --pretty bootstrap @nn_for_science
+chappe --pretty bootstrap @your_channel
 ```
 
 The response includes:
@@ -127,13 +129,13 @@ Recommended setup keeps the API hash out of the visible command line:
 ```bash
 export TELEGRAM_API_ID="123456"
 export TELEGRAM_API_HASH="your-api-hash"
-chappe setup --channel @nn_for_science
+chappe setup --channel @your_channel
 ```
 
 You can also pass the values directly:
 
 ```bash
-chappe setup --api-id "$TELEGRAM_API_ID" --api-hash "$TELEGRAM_API_HASH" --channel @nn_for_science
+chappe setup --api-id "$TELEGRAM_API_ID" --api-hash "$TELEGRAM_API_HASH" --channel @your_channel
 ```
 
 `chappe setup` writes `~/.config/chappe/config.toml` and generates a local TDLib
@@ -173,53 +175,53 @@ credentials or auth state, it should stop analysis and guide setup first.
 Health check:
 
 ```bash
-chappe bootstrap --channel @nn_for_science
-chappe bootstrap @nn_for_science
-chappe bootstrap --channel @nn_for_science --check-auth
+chappe bootstrap --channel @your_channel
+chappe bootstrap @your_channel
+chappe bootstrap --channel @your_channel --check-auth
 chappe doctor
 ```
 
 Sync channel evidence:
 
 ```bash
-chappe channel get @nn_for_science
-chappe sync @nn_for_science --limit 100
-chappe sync @nn_for_science --limit 100 --comments
+chappe channel get @your_channel
+chappe sync @your_channel --limit 100
+chappe sync @your_channel --limit 100 --comments
 ```
 
 Channel analytics:
 
 ```bash
-chappe channel stats @nn_for_science --period 7d
-chappe channel graphs @nn_for_science --period 90d
-chappe channel similar @nn_for_science
+chappe channel stats @your_channel --period 7d
+chappe channel graphs @your_channel --period 90d
+chappe channel similar @your_channel
 ```
 
 Growth research:
 
 ```bash
-chappe posts top @nn_for_science --by forwards --period 365d
-chappe posts top @nn_for_science --by views --period 365d
-chappe posts outliers @nn_for_science
-chappe post report @nn_for_science 2655
-chappe comments mine @nn_for_science --period 180d
-chappe ideas @nn_for_science --count 20
-chappe briefing @nn_for_science --period 90d --budget tokens:12000
+chappe posts top @your_channel --by forwards --period 365d
+chappe posts top @your_channel --by views --period 365d
+chappe posts outliers @your_channel
+chappe post report @your_channel 2655
+chappe comments mine @your_channel --period 180d
+chappe ideas @your_channel --count 20
+chappe briefing @your_channel --period 90d --budget tokens:12000
 ```
 
 Agent evidence bundle:
 
 ```bash
-chappe agent-context @nn_for_science --period 90d --budget tokens:12000
+chappe agent-context @your_channel --period 90d --budget tokens:12000
 ```
 
 Draft and publish:
 
 ```bash
-chappe draft create @nn_for_science --file post.md
+chappe draft create @your_channel --file post.md
 chappe draft lint draft_123
 chappe draft preview draft_123
-chappe automate enable @nn_for_science --policy examples/chappe.yaml
+chappe automate enable @your_channel --policy examples/chappe.yaml
 chappe publish draft_123 --commit --actor codex
 ```
 
@@ -270,7 +272,7 @@ audit:
 Install the policy:
 
 ```bash
-chappe automate enable @nn_for_science --policy examples/chappe.yaml
+chappe automate enable @your_channel --policy examples/chappe.yaml
 ```
 
 ## Agent Integrations
