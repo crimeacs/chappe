@@ -14,6 +14,7 @@ import typer
 from . import __version__
 from .agents import agent_installation_status, available_hosts, install_agent_assets
 from .analytics import (
+    compare_channels,
     filter_posts_by_period,
     find_outliers,
     generate_ideas,
@@ -1382,6 +1383,61 @@ def agent_context(
     budget: str = typer.Option("tokens:12000", "--budget"),
 ) -> None:
     briefing(ctx, channel=channel, period=period, budget=budget)
+
+
+@app.command("compare")
+def compare(
+    ctx: typer.Context,
+    channels: list[str] = typer.Argument(..., help="Two or more channel handles to compare."),
+    by: str = typer.Option("forwards", "--by", help="Metric: forwards, views, replies, reactions, engagement."),
+    limit: int = typer.Option(5, "--limit", help="Top posts per channel."),
+    period: str = typer.Option("365d", "--period", help="Date window applied to each channel."),
+) -> None:
+    def run():
+        allowed = {"forwards", "views", "replies", "reactions", "engagement", "engagement_score"}
+        if by not in allowed:
+            raise ChappeError(
+                f"Unsupported metric: {by}",
+                ExitCode.USAGE_ERROR,
+                details={"allowed": sorted(allowed)},
+            )
+        if len(channels) < 2:
+            raise ChappeError(
+                "compare requires at least two channels.",
+                ExitCode.USAGE_ERROR,
+                details={"channels_given": channels},
+            )
+        store = _store(ctx)
+        channel_posts: dict[str, list[dict[str, Any]]] = {}
+        metric_quality: dict[str, dict[str, Any]] = {}
+        unsynced: list[str] = []
+        for channel in channels:
+            posts = filter_posts_by_period(store.list_posts(channel, limit=5000), period)
+            channel_posts[channel] = posts
+            metric_quality[channel] = _ranking_metric_quality(posts, by)
+            if not posts:
+                unsynced.append(channel)
+        result = compare_channels(channel_posts, by=by, limit=limit)
+        for channel, quality in metric_quality.items():
+            if channel in result["per_channel"]:
+                result["per_channel"][channel]["metric_quality"] = quality
+        if unsynced:
+            next_commands = [f"chappe sync {channel} --limit 100 --comments" for channel in unsynced]
+        else:
+            next_commands = [f"chappe briefing {channel}" for channel in channels[:3]]
+        _emit(
+            ctx,
+            {
+                "ok": True,
+                "channels": channels,
+                "period": period,
+                **result,
+                "unsynced_channels": unsynced,
+                "next_commands": next_commands,
+            },
+        )
+
+    _handle(ctx, run)
 
 
 @app.command("wrapped")

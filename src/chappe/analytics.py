@@ -300,6 +300,72 @@ def share_velocity_analysis(
     }
 
 
+def compare_channels(
+    channel_posts: dict[str, list[dict[str, Any]]],
+    *,
+    by: str = "forwards",
+    limit: int = 5,
+) -> dict[str, Any]:
+    """Cross-channel leaderboard.
+
+    For each channel, returns the top `limit` posts ranked by `by`. Also
+    produces a single combined leaderboard (top posts across all channels) and
+    a summary that names the forward-rate leader and the raw-metric leader.
+    """
+    key = "engagement_score" if by == "engagement" else by
+    per_channel: dict[str, dict[str, Any]] = {}
+    combined: list[dict[str, Any]] = []
+    ratio_by_channel: dict[str, float] = {}
+
+    for channel, posts in channel_posts.items():
+        ranked = rank_posts(posts, by=by, limit=limit)
+        per_channel[channel] = {
+            "posts_available": len(posts),
+            "top_posts": ranked,
+        }
+        for post in ranked:
+            combined.append({"channel": channel, **post})
+        rates = [
+            float(enrich_post(post).get("forward_rate") or 0)
+            for post in posts
+            if int(post.get("views") or 0) > 0
+        ]
+        if rates:
+            ratio_by_channel[channel] = round(sum(rates) / len(rates), 6)
+
+    combined.sort(key=lambda row: row.get(key) or 0, reverse=True)
+
+    fwd_ratio_winner = None
+    if ratio_by_channel:
+        channel, rate = max(ratio_by_channel.items(), key=lambda kv: kv[1])
+        fwd_ratio_winner = {"channel": channel, "mean_forward_rate": rate}
+
+    raw_winner = None
+    if combined:
+        top = combined[0]
+        raw_winner = {
+            "channel": top.get("channel"),
+            "metric": key,
+            "value": top.get(key) or 0,
+            "post_id": top.get("id"),
+            "link": top.get("link"),
+        }
+
+    return {
+        "by": key,
+        "limit": limit,
+        "per_channel": per_channel,
+        "combined_leaderboard": combined[: limit * max(len(channel_posts), 1)],
+        "summary": {
+            "channels_compared": len(channel_posts),
+            "posts_compared": sum(len(p) for p in channel_posts.values()),
+            "by_forward_ratio_winner": fwd_ratio_winner,
+            "by_raw_metric_winner": raw_winner,
+            "mean_forward_rate_by_channel": ratio_by_channel,
+        },
+    }
+
+
 def find_outliers(posts: list[dict[str, Any]], *, limit: int = 20) -> list[dict[str, Any]]:
     enriched = [enrich_post(post) for post in posts]
     scores = [post["engagement_score"] for post in enriched]
