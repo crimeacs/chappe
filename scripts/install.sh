@@ -10,10 +10,18 @@ say() {
 
 if command -v uv >/dev/null 2>&1; then
   say "Installing Chappe with uv..."
-  uv tool install "$SPEC"
+  UV_ERR="$(mktemp)"
+  if uv tool install --quiet "$SPEC" 2>"$UV_ERR"; then
+    grep -v '^WARN ' "$UV_ERR" >&2 || true
+  else
+    cat "$UV_ERR" >&2
+    rm -f "$UV_ERR"
+    exit 1
+  fi
+  rm -f "$UV_ERR"
 elif command -v pipx >/dev/null 2>&1; then
   say "Installing Chappe with pipx..."
-  pipx install "$SPEC"
+  pipx install --quiet "$SPEC"
 else
   PYTHON_BIN="${PYTHON:-python3}"
   INSTALL_ROOT="${CHAPPE_INSTALL_ROOT:-$HOME/.local/share/chappe/tool}"

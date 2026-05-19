@@ -1,3 +1,6 @@
+import json
+
+from chappe.config import ChappeConfig
 from chappe.tdlib import TDLibGateway, normalize_message
 
 
@@ -87,3 +90,24 @@ def test_chat_history_handles_zero_limit():
         "next_from_message_id": None,
     }
     assert gateway.calls == []
+
+
+def test_tdlib_client_disables_native_logs(monkeypatch, tmp_path):
+    class FakeTDJson:
+        def __init__(self):
+            self.executed = []
+
+        def td_execute(self, payload):
+            self.executed.append(json.loads(payload.decode("utf-8")))
+            return None
+
+        def td_create_client_id(self):
+            return 1
+
+    fake = FakeTDJson()
+    monkeypatch.setattr("chappe.tdlib._load_tdjson_module", lambda: fake)
+
+    gateway = TDLibGateway(ChappeConfig.load(tmp_path / "config.toml"))
+    gateway._ensure_client()
+
+    assert fake.executed[0] == {"@type": "setLogVerbosityLevel", "new_verbosity_level": 0}

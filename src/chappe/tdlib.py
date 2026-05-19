@@ -142,7 +142,7 @@ class TDLibGateway:
         self._tdjson = _load_tdjson_module()
         try:
             self._tdjson.td_execute(
-                json.dumps({"@type": "setLogVerbosityLevel", "new_verbosity_level": 1}).encode("utf-8")
+                json.dumps({"@type": "setLogVerbosityLevel", "new_verbosity_level": 0}).encode("utf-8")
             )
         except Exception:
             pass

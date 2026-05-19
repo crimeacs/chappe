@@ -204,6 +204,29 @@ def _briefing_data_quality(posts: list[dict[str, Any]], comments: list[dict[str,
     }
 
 
+def _ranking_metric_quality(posts: list[dict[str, Any]], metric: str) -> dict[str, Any]:
+    key = "engagement_score" if metric == "engagement" else metric
+    warnings: list[str] = []
+    if key == "engagement_score":
+        values = [
+            int(post.get("forwards") or 0) * 5
+            + int(post.get("replies") or 0) * 2
+            + int(post.get("reactions") or 0)
+            for post in posts
+        ]
+    else:
+        values = [int(post.get(key) or 0) for post in posts]
+    nonzero = sum(1 for value in values if value > 0)
+    if posts and nonzero == 0:
+        warnings.append(f"No posts have non-zero {key}; do not interpret this as a meaningful ranking.")
+    return {
+        "metric": key,
+        "posts_considered": len(posts),
+        "nonzero_posts": nonzero,
+        "warnings": warnings,
+    }
+
+
 def _setup_steps(cfg: ChappeConfig, *, channel: str | None = None) -> list[dict[str, Any]]:
     target = channel or cfg.defaults.default_channel or "@your_channel"
     target_arg = _channel_arg(target)
@@ -1120,6 +1143,7 @@ def posts_top(
             raise ChappeError(f"Unsupported metric: {by}", ExitCode.USAGE_ERROR, details={"allowed": sorted(allowed)})
         posts = _store(ctx).list_posts(channel)
         result = rank_posts(posts, by=by, limit=limit)
+        metric_quality = _ranking_metric_quality(posts, by)
         _emit(
             ctx,
             {
@@ -1128,6 +1152,7 @@ def posts_top(
                 "period": period,
                 "by": by,
                 "count": len(result),
+                "metric_quality": metric_quality,
                 "posts": result,
                 "next_command": f"chappe sync {channel}" if not result else None,
             },

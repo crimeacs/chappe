@@ -163,6 +163,34 @@ def test_briefing_includes_data_quality_and_contract(tmp_path):
     assert '"commented_posts_available": 1' in result.stdout
 
 
+def test_posts_top_warns_when_metric_is_all_zero(tmp_path):
+    Store(tmp_path / ".local" / "share" / "chappe" / "chappe.db").upsert_posts(
+        "@nn_for_science",
+        [
+            {
+                "id": "1",
+                "date": "2026-01-01T00:00:00+00:00",
+                "text": "AI agents and Telegram growth",
+                "views": 1000,
+                "forwards": 20,
+                "replies": 2,
+                "reactions": 0,
+            }
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        ["posts", "top", "@nn_for_science", "--by", "reactions"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0
+    assert '"metric_quality":' in result.stdout
+    assert '"nonzero_posts": 0' in result.stdout
+    assert "do not interpret this as a meaningful ranking" in result.stdout
+
+
 def test_config_init_smoke(tmp_path):
     result = runner.invoke(app, ["config", "init"], env={"CHAPPE_HOME": str(tmp_path)})
     assert result.exit_code == 0
