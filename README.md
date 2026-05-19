@@ -2,9 +2,10 @@
 
 ![Chappe social preview](assets/social-preview.png)
 
-Chappe is an Apache-2.0 CLI for Telegram channel owners and coding agents.
+Chappe is an Apache-2.0 CLI tool surface for Telegram channel agents.
+Channel owners use it through Codex/Claude Code/OpenCode/OpenClaw/Hermes.
 
-It collects channel data, ranks posts, mines audience questions, prepares
+The CLI collects channel data, ranks posts, mines audience questions, prepares
 drafts, and publishes only through explicit local policy. It is named after
 Claude Chappe, whose optical telegraph networks let messages travel farther and
 faster.
@@ -18,7 +19,7 @@ Chappe is built for Telegram channel owners. Generic chat automation is out of
 scope for v1.
 It focuses on:
 
-- guided first-run Telegram setup for humans and agents
+- guided first-run Telegram setup for agent hosts
 - channel metadata, post history, and post performance snapshots
 - top posts and outliers by forwards/replies/reactions/views
 - comment mining for audience questions and content demand
@@ -26,8 +27,9 @@ It focuses on:
 - draft creation with lint checks and preview before policy-gated publish commands
 - installable guidance for Codex/Claude Code/OpenCode/OpenClaw/Hermes
 
-Chappe is a CLI, not an MCP server, Telegram desktop client, or LLM wrapper.
-Agents call the same public `chappe` command that humans call.
+Chappe is a CLI tool surface, not an MCP server, Telegram desktop client, or LLM
+wrapper. Agent hosts call the public `chappe` command. Humans normally ask an
+agent host to run it.
 
 ## Status
 
@@ -74,8 +76,8 @@ pipx install chappe
 
 ## First Run
 
-Start with bootstrap. It gathers safe local context and returns the next useful
-commands:
+Start from an agent host. Bootstrap gathers safe local context and returns the
+next useful commands:
 
 ```bash
 chappe --pretty bootstrap @nn_for_science
@@ -84,6 +86,7 @@ chappe --pretty bootstrap @nn_for_science
 The response includes:
 
 - `state`: config/TDLib/credential/auth readiness
+- `intended_use`: how Codex/Claude Code/OpenCode/OpenClaw/Hermes should call Chappe
 - `readiness`: blockers/warnings/score plus local-data status
 - `local_context`: local channel counts plus draft/policy/top-post status
 - `agent_integrations`: whether Chappe skills/commands are installed for common agent hosts
@@ -92,9 +95,9 @@ The response includes:
 - `agent_guided_setup`: machine-readable setup contract for Codex and similar agents
 - `credential_help`: where to get Telegram API credentials
 
-Agents should parse `agent_guided_setup`, ask for only the listed values, treat
-all `sensitive: true` fields as secrets, and avoid channel sync or analysis
-until `chappe onboard --check-auth` reports `authorizationStateReady`.
+Agent hosts should parse `agent_guided_setup`, ask for only the listed values,
+treat all `sensitive: true` fields as secrets, and avoid channel sync or
+analysis until `chappe onboard --check-auth` reports `authorizationStateReady`.
 
 `chappe` with no arguments returns the same bootstrap payload.
 
@@ -134,7 +137,7 @@ export CHAPPE_TDLIB_KEY="stable-local-tdlib-key"
 
 ## Authentication
 
-TDLib auth is intentionally step-by-step, so agents can guide it safely:
+TDLib auth is step-by-step so an agent host can guide it safely:
 
 ```bash
 chappe onboard --check-auth

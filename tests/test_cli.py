@@ -19,6 +19,9 @@ def test_no_args_shows_onboarding(tmp_path):
     result = runner.invoke(app, [], env={"CHAPPE_HOME": str(tmp_path)})
     assert result.exit_code == 0
     assert '"mode": "bootstrap"' in result.stdout
+    assert '"primary_interface": "agent_uses_cli"' in result.stdout
+    assert '"cli_role": "tool_surface_for_agents"' in result.stdout
+    assert "Codex/Claude Code/OpenCode/OpenClaw/Hermes" in result.stdout
     assert '"fastest_path_to_value":' in result.stdout
     assert '"local_context":' in result.stdout
     assert '"setup_steps":' in result.stdout
@@ -74,6 +77,11 @@ def test_onboard_channel_tails_setup_command(tmp_path):
         env={"CHAPPE_HOME": str(tmp_path)},
     )
     assert result.exit_code == 0
+    assert '"agent_integrations":' in result.stdout
+    assert '"id": "install_agent_assets"' in result.stdout
+    assert "chappe agent install codex" in result.stdout
+    assert '"aliases": [' in result.stdout
+    assert '"Hermess"' in result.stdout
     assert "chappe setup --api-id <id> --api-hash <hash> --channel @nn_for_science" in result.stdout
     assert "chappe sync @nn_for_science --limit 100 --comments" in result.stdout
 

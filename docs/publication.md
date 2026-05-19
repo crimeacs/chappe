@@ -22,7 +22,7 @@ release.
 
 4. Configure repository metadata:
 
-   - description: `Open-source Telegram channel CLI for analytics/research and policy-gated publishing.`
+   - description: `Open-source CLI tool surface for Telegram channel agents.`
    - website: PyPI page after release
    - topics: `telegram`, `cli`, `growth`, `analytics`, `agents`, `tdlib`
 

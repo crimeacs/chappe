@@ -8,7 +8,7 @@ tagged release is cut.
 
 ## Unreleased
 
-- Created standalone Chappe package and CLI.
+- Created Chappe package and CLI.
 - Added TDLib-backed auth flow with guided first-run onboarding.
 - Added bootstrap diagnostics as the default first-run experience.
 - Added one-command GitHub installer script.

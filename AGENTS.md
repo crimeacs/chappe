@@ -1,7 +1,7 @@
 # Chappe Agent Guide
 
-Chappe is a Telegram channel CLI for humans and coding agents. Agents working
-in this repo should preserve the public CLI contract and avoid private Telegram
+Chappe is the CLI tool surface for Telegram channel agents. Codex/Claude Code/
+OpenCode/OpenClaw/Hermes should call the public CLI and avoid private Telegram
 state.
 
 ## Development Commands
@@ -14,8 +14,10 @@ pytest -q
 
 ## Product Rules
 
-- Chappe is a CLI-first project, not MCP-first.
-- Agents and humans must use the public `chappe` CLI, not private Python APIs.
+- Chappe is a CLI tool surface for agent hosts, not MCP-first.
+- Agent hosts must use the public `chappe` CLI, not private Python APIs.
+- Humans normally use Chappe by asking Codex/Claude Code/OpenCode/OpenClaw/Hermes
+  to run it.
 - First-run setup must remain guided through `chappe bootstrap`, `chappe onboard`,
   and `agent_guided_setup`.
 - JSON output is the stable interface. Diagnostics and failures should go to stderr.

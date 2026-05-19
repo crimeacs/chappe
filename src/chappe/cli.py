@@ -31,7 +31,7 @@ from .tdlib import (
 app = typer.Typer(
     no_args_is_help=False,
     invoke_without_command=True,
-    help="Chappe: Telegram channel analytics and publishing CLI.",
+    help="Chappe: CLI tool surface for Telegram channel agents.",
 )
 auth_app = typer.Typer(no_args_is_help=True, help="Authenticate with Telegram through TDLib.")
 config_app = typer.Typer(no_args_is_help=True, help="Manage Chappe config.")
@@ -52,6 +52,15 @@ app.add_typer(comments_app, name="comments")
 app.add_typer(draft_app, name="draft")
 app.add_typer(automate_app, name="automate")
 app.add_typer(agent_app, name="agent")
+
+
+AGENT_HOSTS = [
+    {"id": "codex", "name": "Codex"},
+    {"id": "claude-code", "name": "Claude Code"},
+    {"id": "opencode", "name": "OpenCode"},
+    {"id": "openclaw", "name": "OpenClaw"},
+    {"id": "hermes", "name": "Hermes", "aliases": ["Hermess"]},
+]
 
 
 def _ctx(ctx: typer.Context) -> dict[str, Any]:
@@ -103,7 +112,20 @@ def _channel_arg(channel: str) -> str:
 def _setup_steps(cfg: ChappeConfig, *, channel: str | None = None) -> list[dict[str, Any]]:
     target = channel or cfg.defaults.default_channel or "@your_channel"
     target_arg = _channel_arg(target)
-    steps: list[dict[str, Any]] = []
+    steps: list[dict[str, Any]] = [
+        {
+            "id": "install_agent_assets",
+            "status": "recommended",
+            "commands": [
+                "chappe agent install codex",
+                "chappe agent install claude-code",
+                "chappe agent install opencode",
+                "chappe agent install openclaw",
+                "chappe agent install hermes",
+            ],
+            "why": "Install the asset for your agent host. The chappe command is the tool surface agents call.",
+        }
+    ]
     if not cfg.storage.config_path.exists():
         setup_command = (
             f"chappe setup --channel {target_arg}"
@@ -291,8 +313,9 @@ def _agent_guided_setup(
     )
 
     return {
-        "host": "codex",
-        "purpose": "Guide first-run Chappe setup without guessing credentials or starting analysis too early.",
+        "host": "agent",
+        "eligible_hosts": AGENT_HOSTS,
+        "purpose": "Guide Chappe setup from an agent host without guessing credentials or starting analysis too early.",
         "ask_user_for": ask_user_for,
         "commands_after_user_input": commands,
         "privacy_rules": [
@@ -304,6 +327,19 @@ def _agent_guided_setup(
             "I can set up Chappe. Please provide the Telegram API ID and API hash "
             "from https://my.telegram.org/apps plus the phone number for Telegram login, "
             "or export TELEGRAM_API_ID and TELEGRAM_API_HASH locally and tell me to continue."
+        ),
+    }
+
+
+def _intended_use() -> dict[str, Any]:
+    return {
+        "primary_interface": "agent_uses_cli",
+        "agent_hosts": AGENT_HOSTS,
+        "cli_role": "tool_surface_for_agents",
+        "human_direct_use": "diagnostics_only",
+        "note": (
+            "Codex/Claude Code/OpenCode/OpenClaw/Hermes should call the chappe command. "
+            "Humans normally ask an agent host to run it."
         ),
     }
 
@@ -532,7 +568,8 @@ def _bootstrap_payload(
         "ok": True,
         "product": "Chappe",
         "mode": "bootstrap",
-        "message": "Fast-start diagnostics and next commands for Telegram channel work.",
+        "message": "CLI tool surface for Telegram channel agents.",
+        "intended_use": _intended_use(),
         "target_channel": target,
         "state": onboarding["state"],
         "readiness": readiness,
@@ -590,7 +627,8 @@ def _onboarding_payload(
         "ok": True,
         "product": "Chappe",
         "mascot": "Chappie",
-        "message": "Open-source Telegram channel analytics and publishing CLI.",
+        "message": "CLI tool surface for Telegram channel agents.",
+        "intended_use": _intended_use(),
         "state": {
             "config_path": str(cfg.storage.config_path),
             "config_exists": cfg.storage.config_path.exists(),
@@ -602,6 +640,7 @@ def _onboarding_payload(
             "auth_error": auth_error,
         },
         "setup_steps": _setup_steps(cfg, channel=channel),
+        "agent_integrations": agent_installation_status(),
         "agent_guided_setup": _agent_guided_setup(
             cfg,
             channel=channel,
@@ -613,8 +652,8 @@ def _onboarding_payload(
             "note": "Telegram sends the phone login code during `chappe auth login`; Chappe does not store the code.",
         },
         "agent_hint": (
-            "If you are Codex, Claude Code, OpenCode, OpenClaw, or Hermes, run the next "
-            "setup command before attempting channel analysis."
+            "Use Chappe through Codex/Claude Code/OpenCode/OpenClaw/Hermes. "
+            "Those hosts call the chappe CLI as their tool surface."
         ),
     }
 
@@ -669,7 +708,7 @@ def setup(
     tdlib_key: Optional[str] = typer.Option(None, "--tdlib-key", help="Local TDLib DB key."),
     force: bool = typer.Option(False, "--force", help="Overwrite existing config."),
 ) -> None:
-    """Create a complete non-interactive local config for humans and agents."""
+    """Create a complete local config for agent-host use."""
 
     def run():
         cfg = _config(ctx)
