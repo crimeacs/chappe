@@ -298,6 +298,15 @@ Installed assets teach each host to:
 
 All integrations call the public CLI. They do not import private Python APIs.
 
+## Agent Contributions
+
+Agents may patch a local install to unblock a run. Treat that as scratch work.
+Move the fix into a clone of `crimeacs/chappe`, run tests, and open a pull
+request.
+
+Keep credentials and local Chappe state out of patches. That includes config
+files, TDLib data, SQLite stores, audit logs, and channel exports.
+
 ## Local Data And Privacy
 
 By default Chappe stores local state under:

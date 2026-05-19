@@ -18,3 +18,5 @@ chappe publish draft_id --commit --actor hermes
 ```
 
 Only publish when Chappe reports an enabled automation policy for the target channel.
+
+If Chappe itself fails, a local patch can unblock the run. Move the fix into https://github.com/crimeacs/chappe and propose a PR.

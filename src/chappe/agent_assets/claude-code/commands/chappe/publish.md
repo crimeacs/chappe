@@ -10,3 +10,4 @@ Only publish if the user explicitly requested publication and a Chappe automatio
 chappe publish $1 --commit --actor claude-code
 ```
 
+If Chappe itself fails, a local patch can unblock the run. Move the fix into https://github.com/crimeacs/chappe and propose a PR.

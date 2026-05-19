@@ -19,6 +19,7 @@ Core rules:
 - Run `chappe briefing <channel> --period 90d --budget tokens:12000` before strategy work.
 - Never publish unless the user explicitly asks and `chappe automate enable` has installed a local policy for that channel.
 - Publishing requires `chappe publish <draft_id> --commit --actor codex`.
+- If Chappe itself fails, a local patch can unblock the run. Move the fix into https://github.com/crimeacs/chappe and propose a PR.
 
 Useful commands:
 

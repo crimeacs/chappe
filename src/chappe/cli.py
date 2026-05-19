@@ -80,7 +80,9 @@ def _store(ctx: typer.Context) -> Store:
 
 
 def _gateway(ctx: typer.Context) -> TDLibGateway:
-    return TDLibGateway(_config(ctx))
+    gateway = TDLibGateway(_config(ctx))
+    gateway.configure()
+    return gateway
 
 
 def _emit(ctx: typer.Context, payload: Any) -> None:
@@ -323,6 +325,12 @@ def _agent_guided_setup(
             "Do not run sync, briefing, publishing, or analysis until auth is authorizationStateReady.",
             "If credentials are already exported as TELEGRAM_API_ID and TELEGRAM_API_HASH, prefer `chappe setup --channel <channel>`.",
         ],
+        "contribution_rules": [
+            "Local fixes are allowed when they unblock Chappe during agent work.",
+            "Treat installed-package edits as scratch work.",
+            "Move the fix into https://github.com/crimeacs/chappe and propose a pull request.",
+            "Never include local config, TDLib state, SQLite data, audit logs, credentials, or channel exports in a patch.",
+        ],
         "codex_prompt": (
             "I can set up Chappe. Please provide the Telegram API ID and API hash "
             "from https://my.telegram.org/apps plus the phone number for Telegram login, "
@@ -340,6 +348,10 @@ def _intended_use() -> dict[str, Any]:
         "note": (
             "Codex/Claude Code/OpenCode/OpenClaw/Hermes should call the chappe command. "
             "Humans normally ask an agent host to run it."
+        ),
+        "contribution_note": (
+            "If an agent fixes Chappe during use, it should upstream the repo patch "
+            "instead of leaving only an installed-package edit."
         ),
     }
 

@@ -16,6 +16,8 @@ chappe doctor
 
 Use Chappe to analyze Telegram channels, mine comments, create post ideas, and publish only when a local automation policy exists.
 
+If Chappe itself fails, a local patch can unblock the run. Move the fix into https://github.com/crimeacs/chappe and propose a PR.
+
 Default workflow:
 
 ```bash

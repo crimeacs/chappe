@@ -12,3 +12,4 @@ Use `chappe` for Telegram channel analytics/research and guarded publishing.
 - Use `chappe posts top`, `chappe comments mine`, and `chappe ideas` for planning from local channel data.
 - Do not call `chappe publish` unless the user explicitly requested publishing and a local automation policy is enabled.
 - Every mutation must use `--commit` and a meaningful `--actor`.
+- If Chappe itself fails, a local patch can unblock the run. Move the fix into https://github.com/crimeacs/chappe and propose a PR.

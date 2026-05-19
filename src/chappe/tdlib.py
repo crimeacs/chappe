@@ -347,16 +347,63 @@ class TDLibGateway:
         return self.send({"@type": "getChatStatistics", "chat_id": int(chat_id), "is_dark": False})
 
     def chat_history(self, chat_id: int | str, *, limit: int = 100, from_message_id: int = 0) -> dict[str, Any]:
-        return self.send(
-            {
-                "@type": "getChatHistory",
-                "chat_id": int(chat_id),
-                "from_message_id": int(from_message_id),
-                "offset": 0,
-                "limit": min(int(limit), 100),
-                "only_local": False,
-            }
-        )
+        target = max(0, int(limit))
+        if target == 0:
+            return {"@type": "messages", "total_count": 0, "messages": [], "next_from_message_id": None}
+
+        collected: list[dict[str, Any]] = []
+        seen_ids: set[int] = set()
+        cursor = int(from_message_id)
+        total_count: int | None = None
+        empty_batches = 0
+
+        while len(collected) < target:
+            remaining = target - len(collected)
+            batch_limit = min(100, remaining + (1 if cursor else 0))
+            result = self.send(
+                {
+                    "@type": "getChatHistory",
+                    "chat_id": int(chat_id),
+                    "from_message_id": cursor,
+                    "offset": 0,
+                    "limit": batch_limit,
+                    "only_local": False,
+                }
+            )
+            if total_count is None and result.get("total_count") is not None:
+                total_count = int(result["total_count"])
+
+            messages = result.get("messages") or []
+            new_messages: list[dict[str, Any]] = []
+            for message in messages:
+                message_id = message.get("id")
+                if message_id is None or int(message_id) in seen_ids:
+                    continue
+                seen_ids.add(int(message_id))
+                new_messages.append(message)
+
+            if not new_messages:
+                empty_batches += 1
+                if empty_batches >= 2:
+                    break
+                continue
+
+            empty_batches = 0
+            collected.extend(new_messages)
+            next_cursor = new_messages[-1].get("id")
+            if not next_cursor or int(next_cursor) == cursor:
+                break
+            cursor = int(next_cursor)
+
+            if len(messages) < batch_limit and len(collected) >= target:
+                break
+
+        return {
+            "@type": "messages",
+            "total_count": total_count if total_count is not None else len(collected),
+            "messages": collected[:target],
+            "next_from_message_id": cursor or None,
+        }
 
     def message_thread(self, chat_id: int | str, message_id: int | str, *, limit: int = 100) -> dict[str, Any]:
         return self.send(

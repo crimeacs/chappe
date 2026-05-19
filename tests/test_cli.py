@@ -1,3 +1,6 @@
+from types import SimpleNamespace
+
+import chappe.cli as cli
 from typer.testing import CliRunner
 
 from chappe.cli import app
@@ -84,6 +87,27 @@ def test_onboard_channel_tails_setup_command(tmp_path):
     assert '"Hermess"' in result.stdout
     assert "chappe setup --api-id <id> --api-hash <hash> --channel @nn_for_science" in result.stdout
     assert "chappe sync @nn_for_science --limit 100 --comments" in result.stdout
+    assert '"contribution_rules":' in result.stdout
+
+
+def test_gateway_configures_before_return(monkeypatch, tmp_path):
+    cfg = ChappeConfig.load(tmp_path / "config.toml")
+
+    class FakeTDLibGateway:
+        def __init__(self, config):
+            self.config = config
+            self.configured = False
+
+        def configure(self):
+            self.configured = True
+            return {"@type": "authorizationStateReady"}
+
+    monkeypatch.setattr(cli, "TDLibGateway", FakeTDLibGateway)
+
+    gateway = cli._gateway(SimpleNamespace(obj={"config": cfg}))
+
+    assert gateway.config is cfg
+    assert gateway.configured
 
 
 def test_config_init_smoke(tmp_path):

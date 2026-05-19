@@ -23,6 +23,8 @@ pytest -q
 - JSON output is the stable interface. Diagnostics and failures should go to stderr.
 - Publishing must require explicit user intent, `--commit`, and an enabled local policy.
 - Every successful mutation should write an audit event.
+- If an agent fixes Chappe during use, move the fix into the repo and open a PR.
+  Do not leave the only fix in an installed package.
 
 ## Safety Rules
 
