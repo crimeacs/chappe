@@ -20,6 +20,14 @@ faster.
 Meet **Chappie**, the tower keeper for the repo: a small lookout character for
 monitoring and delivery notes.
 
+## Why Chappe
+
+Claude Chappe was the French inventor behind the optical semaphore telegraph:
+networks of towers that relayed coded signals before electric telegraphy. The
+name fits because Telegram is a modern messaging network, and Chappe turns
+channel signals into compact JSON that agents can read. Chappie is the mascot
+version: the tower keeper who watches the channel and signals the next move.
+
 ## Try It With An Agent
 
 Ask Codex, Claude Code, OpenCode, OpenClaw, or Hermes:

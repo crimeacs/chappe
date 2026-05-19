@@ -8,6 +8,11 @@
 
 Chappe is the CLI. Chappie is the tower keeper watching Telegram signals.
 
+Claude Chappe was the French inventor behind the optical semaphore telegraph.
+The product name is a historical callback: old towers moved messages by signal;
+Chappe turns Telegram channel signals into agent-readable JSON. Chappie is the
+mascot version of that idea.
+
 ## README line
 
 > Meet Chappie, the tower keeper for the repo: a small lookout character for monitoring and delivery notes.
