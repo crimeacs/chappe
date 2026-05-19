@@ -165,6 +165,80 @@ def test_briefing_includes_data_quality_and_contract(tmp_path):
     assert '"commented_posts_available": 1' in result.stdout
 
 
+def test_compare_requires_at_least_two_channels(tmp_path):
+    result = runner.invoke(
+        app,
+        ["compare", "@nn_for_science"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+    assert result.exit_code != 0
+    assert "at least two channels" in result.stdout.lower() or "at least two channels" in result.stderr.lower()
+
+
+def test_compare_returns_per_channel_top_and_combined(tmp_path):
+    store = Store(tmp_path / ".local" / "share" / "chappe" / "chappe.db")
+    store.upsert_posts(
+        "@a",
+        [
+            {
+                "id": "1",
+                "date": "2026-01-01T00:00:00+00:00",
+                "views": 1000,
+                "forwards": 200,
+                "link": "https://t.me/a/1",
+            }
+        ],
+    )
+    store.upsert_posts(
+        "@b",
+        [
+            {
+                "id": "1",
+                "date": "2026-01-01T00:00:00+00:00",
+                "views": 5000,
+                "forwards": 500,
+                "link": "https://t.me/b/1",
+            }
+        ],
+    )
+    result = runner.invoke(
+        app,
+        ["compare", "@a", "@b", "--by", "forwards", "--limit", "1"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+    assert result.exit_code == 0
+    assert '"@a"' in result.stdout
+    assert '"@b"' in result.stdout
+    assert '"combined_leaderboard":' in result.stdout
+    assert '"by_forward_ratio_winner":' in result.stdout
+    assert '"by_raw_metric_winner":' in result.stdout
+    assert '"@a"' in result.stdout  # higher forward rate
+    assert '"value": 500' in result.stdout  # raw forwards winner
+
+
+def test_compare_emits_sync_next_command_when_channel_unsynced(tmp_path):
+    Store(tmp_path / ".local" / "share" / "chappe" / "chappe.db").upsert_posts(
+        "@a",
+        [
+            {
+                "id": "1",
+                "date": "2026-01-01T00:00:00+00:00",
+                "views": 100,
+                "forwards": 10,
+            }
+        ],
+    )
+    result = runner.invoke(
+        app,
+        ["compare", "@a", "@neverseen"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+    assert result.exit_code == 0
+    assert '"unsynced_channels":' in result.stdout
+    assert "@neverseen" in result.stdout
+    assert "chappe sync @neverseen" in result.stdout
+
+
 def test_posts_top_warns_when_metric_is_all_zero(tmp_path):
     Store(tmp_path / ".local" / "share" / "chappe" / "chappe.db").upsert_posts(
         "@nn_for_science",
