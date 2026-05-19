@@ -13,7 +13,15 @@ import typer
 
 from . import __version__
 from .agents import agent_installation_status, available_hosts, install_agent_assets
-from .analytics import find_outliers, generate_ideas, mine_terms, rank_posts
+from .analytics import (
+    filter_posts_by_period,
+    find_outliers,
+    generate_ideas,
+    mine_terms,
+    post_timing_analysis,
+    rank_posts,
+    share_velocity_analysis,
+)
 from .config import ChappeConfig, init_config, render_config
 from .drafts import lint_draft
 from .errors import ChappeError, ExitCode
@@ -67,6 +75,7 @@ BRIEFING_REQUIRED_SECTIONS = [
     "top posts with dates, ids, links, and metrics",
     "outlier patterns by format and topic",
     "audience questions from comments",
+    "post timing windows and share velocity",
     "content pillars already working",
     "growth experiments for the next 2 weeks",
     "draftable post hooks",
@@ -302,6 +311,8 @@ def _setup_steps(cfg: ChappeConfig, *, channel: str | None = None) -> list[dict[
                 "commands": [
                     f"chappe briefing {target_arg} --period 90d --budget tokens:12000",
                     f"chappe posts top {target_arg} --by forwards",
+                    f"chappe posts timing {target_arg} --period 365d --timezone UTC",
+                    f"chappe posts velocity {target_arg} --period 365d",
                     f"chappe comments mine {target_arg}",
                     f"chappe ideas {target_arg} --count 20",
                 ],
@@ -469,6 +480,8 @@ def _agent_guided_setup(
                     f"chappe briefing {target_arg} --period 90d --budget tokens:12000",
                     f"chappe posts top {target_arg} --by forwards --period 365d",
                     f"chappe posts top {target_arg} --by replies --period 365d",
+                    f"chappe posts timing {target_arg} --period 365d --timezone UTC",
+                    f"chappe posts velocity {target_arg} --period 365d",
                     f"chappe comments mine {target_arg} --period 180d",
                     f"chappe ideas {target_arg} --count 20",
                 ],
@@ -480,6 +493,7 @@ def _agent_guided_setup(
             "comment_rule": "When sync reports posts_with_replies > 0, comments_requested should normally produce synced_comments > 0.",
             "metric_rule": "Use metric_quality before making claims about replies or reactions.",
             "data_limit_rule": "If Telegram or TDLib omits a metric, say that plainly instead of guessing.",
+            "share_velocity_rule": "Forward velocity requires at least two sync snapshots for the same post.",
         },
         "briefing_contract": {
             "required_sections": BRIEFING_REQUIRED_SECTIONS,
@@ -1174,6 +1188,61 @@ def posts_outliers(
     _handle(ctx, run)
 
 
+@posts_app.command("timing")
+def posts_timing(
+    ctx: typer.Context,
+    channel: str,
+    period: str = typer.Option("365d", "--period", help="Post date window to analyze."),
+    timezone_name: str = typer.Option(
+        "UTC",
+        "--timezone",
+        help="IANA timezone for hour and weekday grouping, for example Europe/Moscow.",
+    ),
+    limit: int = typer.Option(10, "--limit", help="Maximum timing buckets to return."),
+) -> None:
+    def run():
+        posts = filter_posts_by_period(_store(ctx).list_posts(channel, limit=5000), period)
+        timing = post_timing_analysis(posts, timezone_name=timezone_name, limit=limit)
+        _emit(
+            ctx,
+            {
+                "ok": True,
+                "channel": channel,
+                "period": period,
+                "timing": timing,
+                "next_command": f"chappe posts velocity {channel} --period {period}",
+            },
+        )
+
+    _handle(ctx, run)
+
+
+@posts_app.command("velocity")
+def posts_velocity(
+    ctx: typer.Context,
+    channel: str,
+    period: str = typer.Option("365d", "--period", help="Post date window to analyze."),
+    limit: int = typer.Option(10, "--limit", help="Maximum share-gainer intervals to return."),
+) -> None:
+    def run():
+        store = _store(ctx)
+        posts = filter_posts_by_period(store.list_posts(channel, limit=5000), period)
+        snapshots = store.list_post_snapshots(channel)
+        velocity = share_velocity_analysis(posts, snapshots, limit=limit)
+        _emit(
+            ctx,
+            {
+                "ok": True,
+                "channel": channel,
+                "period": period,
+                "velocity": velocity,
+                "next_command": f"chappe sync {channel} --limit 100 --comments",
+            },
+        )
+
+    _handle(ctx, run)
+
+
 @post_app.command("report")
 def post_report(ctx: typer.Context, channel: str, post_id: str) -> None:
     def run():
@@ -1242,8 +1311,11 @@ def briefing(
         store = _store(ctx)
         posts = store.list_posts(channel, limit=1000)
         comments = store.list_comments(channel, limit=1000)
+        snapshots = store.list_post_snapshots(channel)
         top = rank_posts(posts, by="engagement", limit=20)
         data_quality = _briefing_data_quality(posts, comments)
+        timing = post_timing_analysis(filter_posts_by_period(posts, period), timezone_name="UTC", limit=8)
+        velocity = share_velocity_analysis(filter_posts_by_period(posts, period), snapshots, limit=8)
         bundle = {
             "ok": True,
             "channel": channel,
@@ -1258,9 +1330,13 @@ def briefing(
             "top_posts": top,
             "outliers": find_outliers(posts, limit=10),
             "comment_questions": [c for c in comments if "?" in (c.get("text") or "")][:20],
+            "timing": timing,
+            "share_velocity": velocity,
             "ideas": generate_ideas(posts, comments, count=10),
             "next_commands": [
                 f"chappe posts top {channel} --by forwards",
+                f"chappe posts timing {channel} --period {period}",
+                f"chappe posts velocity {channel} --period {period}",
                 f"chappe comments mine {channel}",
                 f"chappe draft create {channel} --file post.md",
             ],

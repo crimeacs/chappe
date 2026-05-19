@@ -9,6 +9,8 @@ Run `chappe bootstrap --channel @channel`, `chappe onboard --channel @channel`, 
 
 ```bash
 chappe briefing @channel --period 90d --budget tokens:12000
+chappe posts timing @channel --period 365d --timezone UTC
+chappe posts velocity @channel --period 365d
 ```
 
 When publishing, Hermes must use an actor name:

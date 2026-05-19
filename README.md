@@ -46,6 +46,7 @@ It focuses on:
 - guided first-run Telegram setup for agent hosts
 - channel metadata, post history, and post performance snapshots
 - top posts and outliers by forwards/replies/reactions/views
+- publish-time windows and snapshot-based forward/share velocity
 - comment mining for audience questions and content demand
 - local evidence bundles for agents
 - draft creation with lint checks and preview before policy-gated publish commands
@@ -209,11 +210,17 @@ Growth research:
 chappe posts top @your_channel --by forwards --period 365d
 chappe posts top @your_channel --by views --period 365d
 chappe posts outliers @your_channel
+chappe posts timing @your_channel --period 365d --timezone UTC
+chappe posts velocity @your_channel --period 365d
 chappe post report @your_channel 2655
 chappe comments mine @your_channel --period 180d
 chappe ideas @your_channel --count 20
 chappe briefing @your_channel --period 90d --budget tokens:12000
 ```
+
+`posts timing` groups publishing performance by local hour plus weekday slot.
+`posts velocity` infers share velocity from `forward_count` deltas between
+repeated `sync` snapshots; it is not a private share-event log.
 
 Agent evidence bundle:
 

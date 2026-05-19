@@ -203,6 +203,20 @@ class Store:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_post_snapshots(self, channel: str, *, limit: int = 10000) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT channel, post_id, captured_at, views, forwards, replies, reactions
+                FROM post_snapshots
+                WHERE channel=?
+                ORDER BY captured_at ASC
+                LIMIT ?
+                """,
+                (channel, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def get_post(self, channel: str, post_id: str) -> dict[str, Any] | None:
         with self.connect() as conn:
             row = conn.execute(

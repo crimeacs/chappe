@@ -10,6 +10,7 @@ Use `chappe` for Telegram channel analytics/research and guarded publishing.
 - Do not sync or analyze until `chappe onboard --check-auth` reports `authorizationStateReady`.
 - After `chappe sync`, inspect `metric_quality` and fix or explain warnings before briefing.
 - Use `chappe briefing @channel --period 90d --budget tokens:12000` for channel strategy.
+- Use `chappe posts timing` and `chappe posts velocity` to analyze posting windows and forward/share deltas.
 - Use `chappe posts top`, `chappe comments mine`, and `chappe ideas` for planning from local channel data.
 - Do not call `chappe publish` unless the user explicitly requested publishing and a local automation policy is enabled.
 - Every mutation must use `--commit` and a meaningful `--actor`.

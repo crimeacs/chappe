@@ -159,6 +159,8 @@ def test_briefing_includes_data_quality_and_contract(tmp_path):
     assert result.exit_code == 0
     assert '"data_quality":' in result.stdout
     assert '"agent_briefing_contract":' in result.stdout
+    assert '"timing":' in result.stdout
+    assert '"share_velocity":' in result.stdout
     assert '"comments_available": 1' in result.stdout
     assert '"commented_posts_available": 1' in result.stdout
 
@@ -189,6 +191,56 @@ def test_posts_top_warns_when_metric_is_all_zero(tmp_path):
     assert '"metric_quality":' in result.stdout
     assert '"nonzero_posts": 0' in result.stdout
     assert "do not interpret this as a meaningful ranking" in result.stdout
+
+
+def test_posts_timing_and_velocity_commands(tmp_path):
+    store = Store(tmp_path / ".local" / "share" / "chappe" / "chappe.db")
+    store.upsert_posts(
+        "@nn_for_science",
+        [
+            {
+                "id": "1",
+                "date": "2026-05-19T10:00:00+00:00",
+                "text": "AI agents and Telegram growth",
+                "views": 100,
+                "forwards": 10,
+                "replies": 1,
+                "reactions": 0,
+            }
+        ],
+    )
+    store.upsert_posts(
+        "@nn_for_science",
+        [
+            {
+                "id": "1",
+                "date": "2026-05-19T10:00:00+00:00",
+                "text": "AI agents and Telegram growth",
+                "views": 140,
+                "forwards": 18,
+                "replies": 2,
+                "reactions": 0,
+            }
+        ],
+    )
+
+    timing = runner.invoke(
+        app,
+        ["posts", "timing", "@nn_for_science", "--period", "all", "--timezone", "UTC"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+    velocity = runner.invoke(
+        app,
+        ["posts", "velocity", "@nn_for_science", "--period", "all"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+
+    assert timing.exit_code == 0
+    assert '"best_hours":' in timing.stdout
+    assert '"10:00"' in timing.stdout
+    assert velocity.exit_code == 0
+    assert '"top_forward_gainers":' in velocity.stdout
+    assert '"forwards_delta": 8' in velocity.stdout
 
 
 def test_config_init_smoke(tmp_path):

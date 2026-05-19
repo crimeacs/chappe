@@ -25,6 +25,8 @@ Default workflow:
 ```bash
 chappe briefing @channel --period 90d --budget tokens:12000
 chappe posts top @channel --by forwards
+chappe posts timing @channel --period 365d --timezone UTC
+chappe posts velocity @channel --period 365d
 chappe comments mine @channel
 chappe ideas @channel --count 20
 ```
