@@ -126,6 +126,117 @@ def test_sync_metric_quality_warns_on_missing_comment_sync():
     assert "Posts have replies, but no comments were synced." in quality["warnings"]
 
 
+def test_sync_freshness_flags_stale_post(monkeypatch):
+    class FrozenDatetime(cli.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 6, 22, 12, 0, 0, tzinfo=tz)
+
+    monkeypatch.setattr(cli, "datetime", FrozenDatetime)
+
+    freshness = cli._sync_freshness(
+        [{"date": "2026-06-20T11:00:00+00:00"}],
+        max_newest_age_hours=48,
+    )
+
+    assert freshness["newest_post_date"] == "2026-06-20T11:00:00+00:00"
+    assert freshness["newest_post_age_hours"] == 49
+    assert freshness["stale"] is True
+
+
+def test_sync_accepts_history_cursor(monkeypatch, tmp_path):
+    calls = {}
+
+    class FakeTDLibGateway:
+        def __init__(self, config):
+            self.config = config
+
+        def configure(self):
+            return {"@type": "authorizationStateReady"}
+
+        def resolve_chat(self, channel):
+            return {"id": 123, "username": channel.lstrip("@")}
+
+        def chat_history(self, chat_id, *, limit=100, from_message_id=0):
+            calls["chat_history"] = {
+                "chat_id": chat_id,
+                "limit": limit,
+                "from_message_id": from_message_id,
+            }
+            return {
+                "@type": "messages",
+                "total_count": 1,
+                "messages": [
+                    {
+                        "id": 11,
+                        "date": 1767225600,
+                        "content": {"@type": "messageText", "text": {"text": "hello"}},
+                    }
+                ],
+                "next_from_message_id": 11,
+            }
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(cli, "TDLibGateway", FakeTDLibGateway)
+
+    result = runner.invoke(
+        app,
+        ["sync", "@nn_for_science", "--limit", "1", "--from-message-id", "99"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0
+    assert calls["chat_history"]["from_message_id"] == 99
+    assert '"from_message_id": 99' in result.stdout
+    assert '"next_from_message_id": 11' in result.stdout
+    assert '"freshness": {' in result.stdout
+
+
+def test_sync_stale_threshold_fails_and_closes_gateway(monkeypatch, tmp_path):
+    calls = {"closed": False}
+
+    class FakeTDLibGateway:
+        def __init__(self, config):
+            self.config = config
+
+        def configure(self):
+            return {"@type": "authorizationStateReady"}
+
+        def resolve_chat(self, channel):
+            return {"id": 123, "username": channel.lstrip("@")}
+
+        def chat_history(self, chat_id, *, limit=100, from_message_id=0):
+            return {
+                "@type": "messages",
+                "total_count": 1,
+                "messages": [
+                    {
+                        "id": 11,
+                        "date": 1767225600,
+                        "content": {"@type": "messageText", "text": {"text": "stale"}},
+                    }
+                ],
+                "next_from_message_id": 11,
+            }
+
+        def close(self):
+            calls["closed"] = True
+
+    monkeypatch.setattr(cli, "TDLibGateway", FakeTDLibGateway)
+
+    result = runner.invoke(
+        app,
+        ["sync", "@fleet_masterbot", "--limit", "1", "--max-newest-age-hours", "1"],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code != 0
+    assert calls["closed"] is True
+    assert "Newest synced post for @fleet_masterbot is stale" in result.output
+
+
 def test_briefing_includes_data_quality_and_contract(tmp_path):
     store_path = tmp_path / ".local" / "share" / "chappe" / "chappe.db"
     store = Store(store_path)

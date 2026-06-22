@@ -6,6 +6,7 @@ import platform
 import shlex
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -183,6 +184,40 @@ def _sync_metric_quality(
         "comment_error_count": len(comment_errors),
         "warnings": warnings,
         "notes": notes,
+    }
+
+
+def _parse_post_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _sync_freshness(posts: list[dict[str, Any]], *, max_newest_age_hours: float | None = None) -> dict[str, Any]:
+    dates = [
+        parsed
+        for parsed in (_parse_post_datetime(post.get("date")) for post in posts)
+        if parsed is not None
+    ]
+    newest = max(dates) if dates else None
+    now = datetime.now(timezone.utc)
+    age_hours = ((now - newest).total_seconds() / 3600) if newest else None
+    stale = (
+        max_newest_age_hours is not None
+        and age_hours is not None
+        and age_hours > max_newest_age_hours
+    )
+    return {
+        "newest_post_date": newest.isoformat() if newest else None,
+        "newest_post_age_hours": round(age_hours, 3) if age_hours is not None else None,
+        "max_newest_age_hours": max_newest_age_hours,
+        "stale": bool(stale),
     }
 
 
@@ -1082,60 +1117,89 @@ def sync(
     channel: str,
     since: Optional[str] = typer.Option(None, "--since", help="ISO date hint. Stored in output metadata."),
     limit: int = typer.Option(100, "--limit", help="Maximum recent posts to sync."),
+    from_message_id: int = typer.Option(
+        0,
+        "--from-message-id",
+        help="Message id cursor for paging older chat history.",
+    ),
     comments: bool = typer.Option(False, "--comments", help="Also sync comment threads for posts with replies."),
     comment_limit_per_post: int = typer.Option(
         30,
         "--comment-limit-per-post",
         help="Maximum comments to sync per post when --comments is used.",
     ),
+    max_newest_age_hours: Optional[float] = typer.Option(
+        None,
+        "--max-newest-age-hours",
+        help="Fail if the newest synced post is older than this many hours.",
+    ),
 ) -> None:
     """Sync recent channel posts into the local analytics store."""
 
     def run():
-        gateway = _gateway(ctx)
-        chat = gateway.resolve_chat(channel)
-        history = gateway.chat_history(chat["id"], limit=limit)
-        messages = history.get("messages", [])
-        posts = [normalize_message(msg, channel=channel, username=chat.get("username")) for msg in messages]
-        store = _store(ctx)
-        count = store.upsert_posts(channel, posts)
-        synced_comments = 0
-        comment_errors: list[dict[str, Any]] = []
-        if comments:
-            for post in posts:
-                if int(post.get("replies") or 0) <= 0:
-                    continue
-                try:
-                    thread = gateway.message_thread(
-                        chat["id"],
-                        post["id"],
-                        limit=comment_limit_per_post,
-                    )
-                    comment_rows = [
-                        normalize_message(msg, channel=channel, username=chat.get("username"))
-                        for msg in thread.get("messages", [])
-                    ]
-                    synced_comments += store.upsert_comments(channel, str(post["id"]), comment_rows)
-                except ChappeError as exc:
-                    comment_errors.append({"post_id": post["id"], "error": exc.message})
-        metric_quality = _sync_metric_quality(
-            messages,
-            posts,
-            comments_requested=comments,
-            synced_comments=synced_comments,
-            comment_errors=comment_errors,
-        )
-        gateway.close()
+        gateway: TDLibGateway | None = None
+        try:
+            gateway = _gateway(ctx)
+            chat = gateway.resolve_chat(channel)
+            history = gateway.chat_history(chat["id"], limit=limit, from_message_id=from_message_id)
+            messages = history.get("messages", [])
+            posts = [normalize_message(msg, channel=channel, username=chat.get("username")) for msg in messages]
+            store = _store(ctx)
+            count = store.upsert_posts(channel, posts)
+            synced_comments = 0
+            comment_errors: list[dict[str, Any]] = []
+            if comments:
+                for post in posts:
+                    if int(post.get("replies") or 0) <= 0:
+                        continue
+                    try:
+                        thread = gateway.message_thread(
+                            chat["id"],
+                            post["id"],
+                            limit=comment_limit_per_post,
+                        )
+                        comment_rows = [
+                            normalize_message(msg, channel=channel, username=chat.get("username"))
+                            for msg in thread.get("messages", [])
+                        ]
+                        synced_comments += store.upsert_comments(channel, str(post["id"]), comment_rows)
+                    except ChappeError as exc:
+                        comment_errors.append({"post_id": post["id"], "error": exc.message})
+            metric_quality = _sync_metric_quality(
+                messages,
+                posts,
+                comments_requested=comments,
+                synced_comments=synced_comments,
+                comment_errors=comment_errors,
+            )
+            freshness = _sync_freshness(posts, max_newest_age_hours=max_newest_age_hours)
+            if freshness["stale"]:
+                raise ChappeError(
+                    (
+                        f"Newest synced post for {channel} is stale: "
+                        f"{freshness['newest_post_date']} "
+                        f"({freshness['newest_post_age_hours']}h old; "
+                        f"threshold={max_newest_age_hours}h)."
+                    ),
+                    ExitCode.TELEGRAM_ERROR,
+                    details={"freshness": freshness},
+                    next_command=f"chappe sync {channel} --limit {limit} --comments",
+                )
+        finally:
+            if gateway is not None:
+                gateway.close()
         _emit(
             ctx,
             {
                 "ok": True,
                 "channel": channel,
                 "since": since,
+                "from_message_id": from_message_id,
                 "synced_posts": count,
                 "synced_comments": synced_comments,
                 "comment_errors": comment_errors,
                 "metric_quality": metric_quality,
+                "freshness": freshness,
                 "next_from_message_id": history.get("next_from_message_id"),
             },
         )
