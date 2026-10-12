@@ -7,6 +7,7 @@ import shlex
 import shutil
 import sys
 from pathlib import Path
+from statistics import median
 from typing import Any, Optional
 
 import typer
@@ -27,6 +28,7 @@ from .config import ChappeConfig, init_config, render_config
 from .dashboard import compute_dashboard_stats, render_caption, render_dashboard_png
 from .drafts import lint_draft
 from .errors import ChappeError, ExitCode
+from .history_cli import chat_app
 from .output import emit, fail
 from .policy import assert_publish_allowed, load_policy, validate_policy
 from .store import Store
@@ -56,6 +58,7 @@ agent_app = typer.Typer(no_args_is_help=True, help="Agent integration assets.")
 app.add_typer(auth_app, name="auth")
 app.add_typer(config_app, name="config")
 app.add_typer(channel_app, name="channel")
+app.add_typer(chat_app, name="chat")
 app.add_typer(posts_app, name="posts")
 app.add_typer(post_app, name="post")
 app.add_typer(comments_app, name="comments")
@@ -1180,7 +1183,7 @@ def posts_top(
         allowed = {"forwards", "views", "replies", "reactions", "engagement", "engagement_score"}
         if by not in allowed:
             raise ChappeError(f"Unsupported metric: {by}", ExitCode.USAGE_ERROR, details={"allowed": sorted(allowed)})
-        posts = _store(ctx).list_posts(channel)
+        posts = filter_posts_by_period(_store(ctx).list_posts(channel), period)
         result = rank_posts(posts, by=by, limit=limit)
         metric_quality = _ranking_metric_quality(posts, by)
         _emit(
@@ -1226,7 +1229,7 @@ def posts_timing(
     limit: int = typer.Option(10, "--limit", help="Maximum timing buckets to return."),
 ) -> None:
     def run():
-        posts = filter_posts_by_period(_store(ctx).list_posts(channel, limit=5000), period)
+        posts = filter_posts_by_period(_store(ctx).list_posts(channel, limit=10000), period)
         timing = post_timing_analysis(posts, timezone_name=timezone_name, limit=limit)
         _emit(
             ctx,
@@ -1251,7 +1254,7 @@ def posts_velocity(
 ) -> None:
     def run():
         store = _store(ctx)
-        posts = filter_posts_by_period(store.list_posts(channel, limit=5000), period)
+        posts = filter_posts_by_period(store.list_posts(channel, limit=10000), period)
         snapshots = store.list_post_snapshots(channel)
         velocity = share_velocity_analysis(posts, snapshots, limit=limit)
         _emit(
@@ -1289,9 +1292,14 @@ def comments_mine(
     channel: str,
     period: str = typer.Option("180d", "--period", help="Requested period label."),
     limit: int = typer.Option(100, "--limit", help="Maximum comments to inspect."),
+    question_limit: int = typer.Option(
+        20,
+        "--question-limit",
+        help="Maximum audience questions to return.",
+    ),
 ) -> None:
     def run():
-        comments = _store(ctx).list_comments(channel, limit=limit)
+        comments = filter_posts_by_period(_store(ctx).list_comments(channel, limit=limit), period)
         terms = mine_terms([comment.get("text") or "" for comment in comments])
         questions = [comment for comment in comments if "?" in (comment.get("text") or "")]
         _emit(
@@ -1302,7 +1310,7 @@ def comments_mine(
                 "period": period,
                 "comments_scanned": len(comments),
                 "top_terms": terms,
-                "questions": questions[:20],
+                "questions": questions[: max(0, question_limit)],
                 "next_command": f"chappe post report {channel} <post_id>" if not comments else None,
             },
         )
@@ -1334,13 +1342,22 @@ def briefing(
 ) -> None:
     def run():
         store = _store(ctx)
-        posts = store.list_posts(channel, limit=1000)
-        comments = store.list_comments(channel, limit=1000)
+        all_posts = store.list_posts(channel)
+        all_comments = store.list_comments(channel)
+        posts = filter_posts_by_period(all_posts, period)
+        comments = filter_posts_by_period(all_comments, period)
         snapshots = store.list_post_snapshots(channel)
         top = rank_posts(posts, by="engagement", limit=20)
         data_quality = _briefing_data_quality(posts, comments)
-        timing = post_timing_analysis(filter_posts_by_period(posts, period), timezone_name="UTC", limit=8)
-        velocity = share_velocity_analysis(filter_posts_by_period(posts, period), snapshots, limit=8)
+        timing = post_timing_analysis(posts, timezone_name="UTC", limit=8)
+        velocity = share_velocity_analysis(posts, snapshots, limit=8)
+        post_dates = sorted(str(post["date"]) for post in posts if post.get("date"))
+        comment_dates = sorted(str(comment["date"]) for comment in comments if comment.get("date"))
+
+        def median_metric(key: str) -> float:
+            values = [int(post.get(key) or 0) for post in posts]
+            return round(float(median(values)), 6) if values else 0.0
+
         bundle = {
             "ok": True,
             "channel": channel,
@@ -1348,8 +1365,18 @@ def briefing(
             "budget": budget,
             "data_quality": data_quality,
             "summary": {
+                "posts_stored": len(all_posts),
                 "posts_available": len(posts),
+                "comments_stored": len(all_comments),
                 "comments_available": len(comments),
+                "first_post_date": post_dates[0] if post_dates else None,
+                "last_post_date": post_dates[-1] if post_dates else None,
+                "first_comment_date": comment_dates[0] if comment_dates else None,
+                "last_comment_date": comment_dates[-1] if comment_dates else None,
+                "median_views": median_metric("views"),
+                "median_forwards": median_metric("forwards"),
+                "median_replies": median_metric("replies"),
+                "median_reactions": median_metric("reactions"),
                 "top_terms": mine_terms([p.get("text") or "" for p in top], limit=20),
             },
             "top_posts": top,
