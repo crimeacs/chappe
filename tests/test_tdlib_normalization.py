@@ -51,6 +51,26 @@ def test_normalize_message_extracts_reaction_count_fallback():
     assert post["reactions"] == 4
 
 
+def test_normalize_message_excludes_paid_reactions():
+    msg = {
+        "id": 126,
+        "content": {"@type": "messageText", "text": {"@type": "formattedText", "text": "hello"}},
+        "interaction_info": {
+            "reaction_count": 1107,
+            "reactions": {
+                "reactions": [
+                    {"type": {"@type": "reactionTypePaid"}, "total_count": 1103},
+                    {"type": {"@type": "reactionTypeEmoji", "emoji": "🔥"}, "total_count": 4},
+                ]
+            },
+        },
+    }
+
+    post = normalize_message(msg, channel="@x", username="x")
+
+    assert post["reactions"] == 4
+
+
 class FakeGateway:
     def __init__(self, responses):
         self.responses = responses
@@ -111,3 +131,36 @@ def test_tdlib_client_disables_native_logs(monkeypatch, tmp_path):
     gateway._ensure_client()
 
     assert fake.executed[0] == {"@type": "setLogVerbosityLevel", "new_verbosity_level": 0}
+
+
+def test_configure_restarts_client_after_logout_finishes(monkeypatch, tmp_path):
+    monkeypatch.setenv("TELEGRAM_API_ID", "123")
+    monkeypatch.setenv("TELEGRAM_API_HASH", "hash")
+    gateway = TDLibGateway(ChappeConfig.load(tmp_path / "config.toml"))
+    gateway._tdjson = object()
+    gateway._client = 1
+    gateway._last_authorization_state = {"@type": "authorizationStateLoggingOut"}
+    states = iter(
+        [
+            {"@type": "authorizationStateLoggingOut"},
+            {"@type": "authorizationStateWaitPhoneNumber"},
+        ]
+    )
+
+    def fake_send(query, *, timeout=20.0):
+        assert query == {"@type": "getAuthorizationState"}
+        return next(states)
+
+    def fake_wait(current_type, *, timeout=20.0):
+        assert current_type == "authorizationStateLoggingOut"
+        return {"@type": "authorizationStateClosed"}
+
+    monkeypatch.setattr(gateway, "send", fake_send)
+    monkeypatch.setattr(gateway, "wait_for_authorization_state_change", fake_wait)
+
+    state = gateway.configure()
+
+    assert state == {"@type": "authorizationStateWaitPhoneNumber"}
+    assert gateway._tdjson is None
+    assert gateway._client is None
+    assert gateway._last_authorization_state is None

@@ -84,15 +84,20 @@ def _reply_info(message: dict[str, Any]) -> dict[str, Any]:
 def _reaction_total(message: dict[str, Any]) -> int:
     interaction = message.get("interaction_info") or {}
     reactions = interaction.get("reactions") or message.get("reactions") or {}
+    entries = reactions.get("reactions", []) or reactions.get("results", [])
     total = 0
-    for reaction in reactions.get("reactions", []) or reactions.get("results", []):
+    for reaction in entries:
+        if (reaction.get("type") or {}).get("@type") == "reactionTypePaid":
+            continue
         total += int(
             reaction.get("total_count")
             or reaction.get("count")
             or reaction.get("reaction_count")
             or 0
         )
-    return int(total or interaction.get("reaction_count") or message.get("reaction_count") or 0)
+    if entries:
+        return int(total)
+    return int(interaction.get("reaction_count") or message.get("reaction_count") or 0)
 
 
 def normalize_chat(chat: dict[str, Any], handle: str | None = None) -> dict[str, Any]:
@@ -217,6 +222,36 @@ class TDLibGateway:
                 return state
         raise ChappeError("Timed out waiting for TDLib authorization state.", ExitCode.AUTH_ERROR)
 
+    def wait_for_authorization_state_change(
+        self, current_type: str, *, timeout: float = 20.0
+    ) -> dict[str, Any]:
+        """Wait until TDLib leaves a transient authorization state."""
+        self._ensure_client()
+        if (
+            self._last_authorization_state
+            and self._last_authorization_state.get("@type") != current_type
+        ):
+            return self._last_authorization_state
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            update = self._receive(timeout=0.5)
+            if not update or update.get("@type") != "updateAuthorizationState":
+                continue
+            state = update.get("authorization_state") or {}
+            if state.get("@type") != current_type:
+                return state
+        raise ChappeError(
+            f"Timed out waiting for TDLib to leave {current_type}.",
+            ExitCode.AUTH_ERROR,
+        )
+
+    def _reset_closed_client(self) -> None:
+        """Forget a closed TDLib client so the authorization flow can restart."""
+        self._tdjson = None
+        self._client = None
+        self._last_authorization_state = None
+
     def _send_auth_request(self, query: dict[str, Any]) -> dict[str, Any]:
         result = self.send(query)
         if result.get("@type") == "error":
@@ -235,45 +270,64 @@ class TDLibGateway:
                 next_command="chappe config init; export TELEGRAM_API_ID=... TELEGRAM_API_HASH=...",
             )
         self.config.ensure_dirs()
-        state = self.send({"@type": "getAuthorizationState"})
+        client_restarts = 0
         while True:
-            stype = state.get("@type")
-            if stype == "authorizationStateWaitTdlibParameters":
-                key = self.config.telegram.database_encryption_key or os.getenv(
-                    self.config.telegram.database_encryption_key_env, ""
-                )
-                encoded_key = _td_bytes(key)
-                self._send_auth_request(
-                    {
-                        "@type": "setTdlibParameters",
-                        "use_test_dc": False,
-                        "database_directory": str(self.config.storage.tdlib_dir),
-                        "files_directory": str(self.config.storage.tdlib_dir / "files"),
-                        "database_encryption_key": encoded_key,
-                        "use_file_database": True,
-                        "use_chat_info_database": True,
-                        "use_message_database": True,
-                        "use_secret_chats": False,
-                        "api_id": int(self.config.telegram.api_id),
-                        "api_hash": self.config.telegram.api_hash,
-                        "system_language_code": "en",
-                        "device_model": "Chappe CLI",
-                        "system_version": os.uname().sysname if hasattr(os, "uname") else "unknown",
-                        "application_version": __version__,
-                    }
-                )
-                state = self.send({"@type": "getAuthorizationState"})
+            state = self.send({"@type": "getAuthorizationState"})
+            restart_client = False
+            while True:
+                stype = state.get("@type")
+                if stype == "authorizationStateWaitTdlibParameters":
+                    key = self.config.telegram.database_encryption_key or os.getenv(
+                        self.config.telegram.database_encryption_key_env, ""
+                    )
+                    encoded_key = _td_bytes(key)
+                    self._send_auth_request(
+                        {
+                            "@type": "setTdlibParameters",
+                            "use_test_dc": False,
+                            "database_directory": str(self.config.storage.tdlib_dir),
+                            "files_directory": str(self.config.storage.tdlib_dir / "files"),
+                            "database_encryption_key": encoded_key,
+                            "use_file_database": True,
+                            "use_chat_info_database": True,
+                            "use_message_database": True,
+                            "use_secret_chats": False,
+                            "api_id": int(self.config.telegram.api_id),
+                            "api_hash": self.config.telegram.api_hash,
+                            "system_language_code": "en",
+                            "device_model": "Chappe CLI",
+                            "system_version": os.uname().sysname if hasattr(os, "uname") else "unknown",
+                            "application_version": __version__,
+                        }
+                    )
+                    state = self.send({"@type": "getAuthorizationState"})
+                    continue
+                if stype == "authorizationStateWaitEncryptionKey":
+                    key = self.config.telegram.database_encryption_key or os.getenv(
+                        self.config.telegram.database_encryption_key_env, ""
+                    )
+                    self._send_auth_request(
+                        {"@type": "checkDatabaseEncryptionKey", "encryption_key": _td_bytes(key)}
+                    )
+                    state = self.send({"@type": "getAuthorizationState"})
+                    continue
+                if stype in {"authorizationStateLoggingOut", "authorizationStateClosing"}:
+                    state = self.wait_for_authorization_state_change(stype)
+                    continue
+                if stype == "authorizationStateClosed":
+                    if client_restarts >= 2:
+                        raise ChappeError(
+                            "TDLib remained closed after restarting the authorization flow.",
+                            ExitCode.AUTH_ERROR,
+                            next_command="chappe auth login --phone <phone>",
+                        )
+                    self._reset_closed_client()
+                    client_restarts += 1
+                    restart_client = True
+                    break
+                return state
+            if restart_client:
                 continue
-            if stype == "authorizationStateWaitEncryptionKey":
-                key = self.config.telegram.database_encryption_key or os.getenv(
-                    self.config.telegram.database_encryption_key_env, ""
-                )
-                self._send_auth_request(
-                    {"@type": "checkDatabaseEncryptionKey", "encryption_key": _td_bytes(key)}
-                )
-                state = self.send({"@type": "getAuthorizationState"})
-                continue
-            return state
 
     def authorization_state(self) -> dict[str, Any]:
         try:

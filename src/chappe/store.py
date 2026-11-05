@@ -195,7 +195,7 @@ class Store:
                 )
         return count
 
-    def list_posts(self, channel: str, *, limit: int = 1000) -> list[dict[str, Any]]:
+    def list_posts(self, channel: str, *, limit: int = 10000) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM posts WHERE channel=? ORDER BY date DESC LIMIT ?",
@@ -225,7 +225,7 @@ class Store:
             ).fetchone()
         return dict(row) if row else None
 
-    def list_comments(self, channel: str, *, limit: int = 1000) -> list[dict[str, Any]]:
+    def list_comments(self, channel: str, *, limit: int = 10000) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM comments WHERE channel=? ORDER BY date DESC LIMIT ?",

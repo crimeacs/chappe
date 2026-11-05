@@ -1,3 +1,5 @@
+import json
+from datetime import datetime
 from types import SimpleNamespace
 
 import chappe.cli as cli
@@ -152,7 +154,7 @@ def test_briefing_includes_data_quality_and_contract(tmp_path):
 
     result = runner.invoke(
         app,
-        ["briefing", "@nn_for_science"],
+        ["briefing", "@nn_for_science", "--period", "all"],
         env={"CHAPPE_HOME": str(tmp_path)},
     )
 
@@ -163,6 +165,114 @@ def test_briefing_includes_data_quality_and_contract(tmp_path):
     assert '"share_velocity":' in result.stdout
     assert '"comments_available": 1' in result.stdout
     assert '"commented_posts_available": 1' in result.stdout
+
+
+def test_period_filters_top_posts_comments_and_briefing(monkeypatch, tmp_path):
+    store = Store(tmp_path / ".local" / "share" / "chappe" / "chappe.db")
+    store.upsert_posts(
+        "@nn_for_science",
+        [
+            {
+                "id": "old",
+                "date": "2025-01-01T00:00:00+00:00",
+                "text": "old post",
+                "views": 10000,
+                "forwards": 1000,
+            },
+            {
+                "id": "recent",
+                "date": "2026-08-01T00:00:00+00:00",
+                "text": "recent post",
+                "views": 100,
+                "forwards": 10,
+            },
+        ],
+    )
+    store.upsert_comments(
+        "@nn_for_science",
+        "old",
+        [{"id": "old-comment", "date": "2025-01-02T00:00:00+00:00", "text": "Old question?"}],
+    )
+    store.upsert_comments(
+        "@nn_for_science",
+        "recent",
+        [{"id": "recent-comment", "date": "2026-08-02T00:00:00+00:00", "text": "Recent question?"}],
+    )
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 5, tzinfo=tz)
+
+    monkeypatch.setattr("chappe.analytics.datetime", FixedDateTime)
+
+    env = {"CHAPPE_HOME": str(tmp_path)}
+    top = json.loads(
+        runner.invoke(
+            app,
+            ["posts", "top", "@nn_for_science", "--period", "90d"],
+            env=env,
+        ).stdout
+    )
+    comments = json.loads(
+        runner.invoke(
+            app,
+            ["comments", "mine", "@nn_for_science", "--period", "90d"],
+            env=env,
+        ).stdout
+    )
+    briefing = json.loads(
+        runner.invoke(
+            app,
+            ["briefing", "@nn_for_science", "--period", "90d"],
+            env=env,
+        ).stdout
+    )
+
+    assert [post["id"] for post in top["posts"]] == ["recent"]
+    assert [comment["id"] for comment in comments["questions"]] == ["recent-comment"]
+    assert [post["id"] for post in briefing["top_posts"]] == ["recent"]
+    assert [comment["id"] for comment in briefing["comment_questions"]] == ["recent-comment"]
+    assert briefing["summary"]["posts_stored"] == 2
+    assert briefing["summary"]["posts_available"] == 1
+    assert briefing["summary"]["first_post_date"] == "2026-08-01T00:00:00+00:00"
+    assert briefing["summary"]["median_views"] == 100.0
+    assert briefing["summary"]["median_forwards"] == 10.0
+
+
+def test_comments_mine_can_return_more_than_twenty_questions(tmp_path):
+    store_path = tmp_path / ".local" / "share" / "chappe" / "chappe.db"
+    Store(store_path).upsert_comments(
+        "@nn_for_science",
+        "1",
+        [
+            {
+                "id": f"c{index}",
+                "date": f"2026-01-{(index % 28) + 1:02d}T00:00:00+00:00",
+                "text": f"Question {index}?",
+            }
+            for index in range(25)
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "comments",
+            "mine",
+            "@nn_for_science",
+            "--limit",
+            "100",
+            "--question-limit",
+            "25",
+            "--period",
+            "all",
+        ],
+        env={"CHAPPE_HOME": str(tmp_path)},
+    )
+
+    assert result.exit_code == 0
+    assert len(json.loads(result.stdout)["questions"]) == 25
 
 
 def test_compare_requires_at_least_two_channels(tmp_path):
@@ -266,7 +376,16 @@ def test_wrapped_creates_png_and_caption(tmp_path):
     out_path = tmp_path / "wrapped.png"
     result = runner.invoke(
         app,
-        ["wrapped", "@nn_for_science", "--out", str(out_path), "--lang", "ru"],
+        [
+            "wrapped",
+            "@nn_for_science",
+            "--period",
+            "all",
+            "--out",
+            str(out_path),
+            "--lang",
+            "ru",
+        ],
         env={"CHAPPE_HOME": str(tmp_path)},
     )
 

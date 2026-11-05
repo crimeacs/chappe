@@ -21,3 +21,20 @@ def test_store_lists_post_snapshots(tmp_path):
 
     assert len(snapshots) == 2
     assert snapshots[-1]["forwards"] == 5
+
+
+def test_store_lists_more_than_one_thousand_posts_by_default(tmp_path):
+    store = Store(tmp_path / "chappe.db")
+    store.upsert_posts(
+        "@x",
+        [
+            {
+                "id": str(index),
+                "date": f"2026-01-{(index % 28) + 1:02d}T00:00:00+00:00",
+                "views": index,
+            }
+            for index in range(1001)
+        ],
+    )
+
+    assert len(store.list_posts("@x")) == 1001
