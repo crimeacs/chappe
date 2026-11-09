@@ -153,14 +153,29 @@ class TDLibGateway:
             pass
         self._client = self._tdjson.td_create_client_id()
 
-    def close(self) -> None:
-        if self._tdjson and self._client:
-            try:
-                self.send({"@type": "close"}, timeout=1)
-            except Exception:
-                pass
-        self._tdjson = None
-        self._client = None
+    def close(self, *, timeout: float = 20.0) -> None:
+        """Wait for TDLib to flush its databases and finish closing."""
+        if not self._tdjson or not self._client:
+            self._reset_closed_client()
+            return
+
+        state_type = (self._last_authorization_state or {}).get("@type")
+        deadline = time.monotonic() + timeout
+        if state_type not in {"authorizationStateClosing", "authorizationStateClosed"}:
+            self.send({"@type": "close"}, timeout=timeout)
+
+        # An Ok response acknowledges the request; resources remain live until
+        # authorizationStateClosed arrives, possibly after other queued updates.
+        while (self._last_authorization_state or {}).get("@type") != "authorizationStateClosed":
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ChappeError(
+                    "Timed out waiting for TDLib to finish closing (authorizationStateClosed).",
+                    ExitCode.TELEGRAM_ERROR,
+                )
+            self._receive(timeout=min(0.5, remaining))
+
+        self._reset_closed_client()
 
     def execute(self, query: dict[str, Any]) -> dict[str, Any] | None:
         self._ensure_client()

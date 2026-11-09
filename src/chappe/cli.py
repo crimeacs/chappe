@@ -28,6 +28,7 @@ from .config import ChappeConfig, init_config, render_config
 from .dashboard import compute_dashboard_stats, render_caption, render_dashboard_png
 from .drafts import lint_draft
 from .errors import ChappeError, ExitCode
+from .history_cli import chat_app
 from .output import emit, fail
 from .policy import assert_publish_allowed, load_policy, validate_policy
 from .store import Store
@@ -57,6 +58,7 @@ agent_app = typer.Typer(no_args_is_help=True, help="Agent integration assets.")
 app.add_typer(auth_app, name="auth")
 app.add_typer(config_app, name="config")
 app.add_typer(channel_app, name="channel")
+app.add_typer(chat_app, name="chat")
 app.add_typer(posts_app, name="posts")
 app.add_typer(post_app, name="post")
 app.add_typer(comments_app, name="comments")

@@ -241,6 +241,36 @@ chappe publish draft_123 --commit --actor codex
 Publishing requires `--commit` and an enabled local automation policy for the
 target channel. Every successful mutation writes an audit event.
 
+Read authorized chat history:
+
+```bash
+chappe chat search "project name" --limit 100
+chappe chat history @example_user --limit 1000
+chappe chat history --limit 1000 --from-message-id 123456789 -- -1001234567890
+chappe chat user 123456789
+chappe chat resolve-user 123456789
+chappe chat message -- -1001234567890 123456789
+chappe chat download --output ./evidence/clip.mp4 -- -1001234567890 123456789
+```
+
+Search covers account-known titles and usernames. History returns text, captions,
+dates and sender/reply IDs without downloading media or marking messages as read.
+Pass `next_from_message_id` as the next page's exclusive cursor; IDs use TDLib's
+namespace and are not Telegram web message IDs. A short or empty page does not
+prove complete history. Keep private exports out of Git and public reports.
+
+`chat user` returns only names, active usernames and account type for a known
+sender ID; it omits phone and presence. `chat message` returns one message and
+primary attachment metadata. `chat download` explicitly downloads that attachment
+to a new destination and returns its SHA-256, byte size and message provenance.
+It refuses overwrite, incomplete downloads and files exceeding `--max-bytes`
+(250 MB by default). Downloads have a 60-second default `--timeout` and write a
+local audit event. These commands do not mark messages as read or send messages.
+TDLib file IDs are session-local references; use chat/message IDs for provenance.
+If a known private conversation is not yet loaded by TDLib, `chat resolve-user`
+returns its chat identity through `createPrivateChat(force=false)` without
+reading message content, sending a message or marking the conversation as read.
+
 ## JSON Contract
 
 Chappe emits compact JSON by default and diagnostics to stderr. Use `--pretty`
