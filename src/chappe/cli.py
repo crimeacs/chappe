@@ -1322,6 +1322,62 @@ def post_report(ctx: typer.Context, channel: str, post_id: str) -> None:
     _handle(ctx, run)
 
 
+@comments_app.command("read")
+def comments_read(
+    ctx: typer.Context,
+    url: str,
+    page_size: int = typer.Option(100, "--page-size", help="TDLib page size,1–100."),
+    max_messages: int = typer.Option(10000, "--max-messages", help="Hard reply limit; incomplete reads exit nonzero."),
+    max_pages: int = typer.Option(1000, "--max-pages", help="Hard history request limit."),
+) -> None:
+    """Read the exact public post and all accessible raw comment text live."""
+    def run():
+        from .comment_read import read_comments, validate_public_post_url
+
+        validate_public_post_url(url)
+        gateway = TDLibGateway(_config(ctx))
+        try:
+            state = gateway.configure()
+            if state.get("@type") != "authorizationStateReady":
+                raise ChappeError("Telegram authorization is not ready.", ExitCode.AUTH_ERROR,
+                                  next_command="chappe auth status")
+            result = read_comments(gateway, url, page_size=page_size,
+                                   max_messages=max_messages, max_pages=max_pages)
+            _emit(ctx, result)
+            if not result["coverage"]["complete"]:
+                typer.echo("Comment read is incomplete; inspect coverage counters.", err=True)
+                raise typer.Exit(1)
+        finally:
+            gateway.close()
+
+    _handle(ctx, run)
+
+
+@comments_app.command("photo")
+def comments_photo(
+    ctx: typer.Context,
+    url: str,
+    message_id: int = typer.Option(..., "--message-id", help="Exact TDLib comment id from comments read."),
+    output: str = typer.Option(..., "--output", help="New photo file outside the Chappe repository."),
+) -> None:
+    """Export only one explicitly selected public comment photo (max10MiB)."""
+    def run():
+        from .comment_read import download_comment_photo, validate_public_post_url
+
+        validate_public_post_url(url)
+        gateway = TDLibGateway(_config(ctx))
+        try:
+            state = gateway.configure()
+            if state.get("@type") != "authorizationStateReady":
+                raise ChappeError("Telegram authorization is not ready.", ExitCode.AUTH_ERROR,
+                                  next_command="chappe auth status")
+            _emit(ctx, download_comment_photo(gateway, url, message_id, output))
+        finally:
+            gateway.close()
+
+    _handle(ctx, run)
+
+
 @comments_app.command("mine")
 def comments_mine(
     ctx: typer.Context,
